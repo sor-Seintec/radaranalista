@@ -67,7 +67,7 @@ const km=(a,b)=>{const r=Math.PI/180,dLat=(b.lat-a.lat)*r,dLng=(b.lng-a.lng)*r;c
 const hasLocation=x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng);
 const format=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-const GOOGLE_MAPS_KEY="AIzaSyARBZLiFgDXRavygwdlDArapexEXhY0LyU";
+const GOOGLE_MAPS_KEY="AIzaSyCjAYawv7MVBeJmzcEs-v1YFnH4FT8xXbY";
 let map,PinOverlay,rings=[],people=[],schoolPins=[],routeObjects=[],markers=new Map(),visible=[],routeTimer=null,mapLoadTimer=null,mapAuthFailed=false;
 const position=x=>({lat:x.lat,lng:x.lng});
 function clearObjects(objects){objects.forEach(o=>o.setMap(null));objects.length=0}
