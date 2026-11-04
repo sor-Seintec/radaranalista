@@ -169,7 +169,12 @@
       getDate(){return selectedDate}
     };
   }
-  return Object.freeze({normalize,normalizeCie,todayIso,validDate,completed,createResolver,compareOrders,project,createSync});
+  function linkDirectory(agents,records){
+    const resolver=createResolver(agents,[]),aliases=new Map(agents.map(a=>[a.id,[]]));
+    for(const record of records){const agent=resolver.agent({analystName:record.name});if(!agent)continue;for(const id of [record.id,record.documentId])if(id)aliases.get(agent.id).push(String(id))}
+    return agents.map(a=>({...a,scheduleIds:[...(a.scheduleIds||[]),...(aliases.get(a.id)||[])]}));
+  }
+  return Object.freeze({normalize,normalizeCie,todayIso,validDate,completed,createResolver,compareOrders,project,createSync,linkDirectory});
 });
 
 </script>
@@ -244,12 +249,25 @@ const FIREBASE_CONFIG={
 let agendaSync=null,agendaConnection={state:'stopped'},agendaIssues=[],attendancesByAgent=new Map(),agendaAgentStates=new Map();
 const agentMotionFrames=new Map(),agentVisualPositions=new Map();
 let agendaDate='',agendaSnapshot=false,animateAgenda=false,firebaseLoading=null;
+let agendaAgents=agents,agendaRecords=[],directoryUnsub=null,directoryUid=null,directoryGeneration=0,directoryError=false;
+function projectAgenda(animate=false){const result=window.RadarAgenda.project(agendaRecords,{agents:agendaAgents,schools,date:agendaDate,distance:km});attendancesByAgent=result.byAgent;agendaAgentStates=result.agentStates;agendaIssues=result.issues;refreshAgenda(animate)}
+function stopDirectory(){directoryGeneration++;directoryUnsub?.();directoryUnsub=null;directoryUid=null;agendaAgents=agents;directoryError=false}
+function syncDirectory(){
+ const uid=window.firebase?.auth().currentUser?.uid;if(!uid||uid===directoryUid)return;
+ stopDirectory();directoryUid=uid;const token=directoryGeneration;
+ try{directoryUnsub=window.firebase.firestore().collection('analistas').onSnapshot(snapshot=>{
+  if(token!==directoryGeneration||window.firebase.auth().currentUser?.uid!==uid)return;
+  const records=[];snapshot.forEach(doc=>{const value=doc.data()||{};records.push({id:value.id,documentId:doc.id,name:value.name})});
+  agendaAgents=window.RadarAgenda.linkDirectory(agents,records);directoryError=false;projectAgenda(true);
+ },()=>{if(token!==directoryGeneration)return;agendaAgents=agents;directoryError=true;projectAgenda()})}catch{directoryUid=null;directoryError=true;updateAgendaPanel()}
+}
 function cancelAgentMotions(){agentMotionFrames.forEach(id=>cancelAnimationFrame(id));agentMotionFrames.clear()}
 function updateAgendaPanel(){
  const status=agendaConnection.state;
  const messages={stopped:'Agenda desconectada',authenticating:'Verificando acesso à agenda…',connecting:'Consultando agenda da data…','signed-out':'Conectar agenda','permission-denied':'Sem permissão para ler a agenda',error:'Agenda indisponível. Tente reconectar.'};
  $('sync-status').textContent=['live','cached'].includes(status)?(status==='cached'?'Dados em cache':'Agenda sincronizada')+' · '+attendancesByAgent.size+' previsto(s)'+(agendaIssues.length?' · '+agendaIssues.length+' vínculo(s) pendente(s)':''):messages[status]||'Agenda desconectada';
  $('sync-status').title=agendaIssues.map(i=>'O.S. '+(i.id||'sem ID')+': '+(i.type==='school'?'CIE não reconhecido ('+i.schoolCie+')':'Analista não reconhecido ('+i.analystId+')')).join('\n');
+ if(directoryError)$('sync-status').textContent+=' · Não foi possível ler o cadastro de analistas';
  const a=agents.find(a=>a.id===state.agent),att=a&&attendancesByAgent.get(a.id),planned=a&&agendaAgentStates.get(a.id);
  $('profile-attendance').textContent=att?'Próxima escola prevista: '+att.school.name+' · '+att.pendingCount+' pendente(s)':!agendaSnapshot?'Agenda não confirmada para esta data.':planned?.status==='unmatched'?'Vínculo pendente: confira o CIE da escola na agenda.':planned?.status==='completed'?'Agenda concluída. Avatar na base de referência.':a?'Sem O.S. pendente. Avatar na base de referência.':'Selecione um analista para consultar a previsão.';
  $('agenda-connect').textContent=['live','cached','connecting'].includes(status)?'Atualizar agenda':'Conectar agenda';
@@ -295,8 +313,8 @@ async function connectAgenda(){
  try{
   const firebase=await loadAgendaFirebase();if(!firebase.apps.length)firebase.initializeApp(FIREBASE_CONFIG);
   agendaSync=window.RadarAgenda.createSync({auth:firebase.auth(),db:firebase.firestore(),date:agendaDate,
-   onData(list,meta){if(meta.date!==agendaDate)return;const result=window.RadarAgenda.project(list,{agents,schools,date:agendaDate,distance:km});attendancesByAgent=result.byAgent;agendaAgentStates=result.agentStates;agendaIssues=result.issues;agendaSnapshot=!meta.reset;refreshAgenda(!meta.reset)},
-   onStatus(status){agendaConnection=status;updateAgendaPanel();if(['live','cached','connecting'].includes(status.state)){$('agenda-login').hidden=true;$('agenda-password').value=''}}
+   onData(list,meta){if(meta.date!==agendaDate)return;agendaRecords=list;agendaSnapshot=!meta.reset;projectAgenda(!meta.reset)},
+   onStatus(status){agendaConnection=status;if(['signed-out','stopped','error','permission-denied'].includes(status.state))stopDirectory();else syncDirectory();updateAgendaPanel();if(['live','cached','connecting'].includes(status.state)){$('agenda-login').hidden=true;$('agenda-password').value=''}}
   });agendaSync.start();
  }catch(error){agendaSync=null;agendaConnection={state:'error'};updateAgendaPanel();console.warn('Radar: conexão da agenda indisponível',error?.code||'sdk')}
 }
@@ -312,7 +330,7 @@ function setupAgenda(){
  $('agenda-cancel').onclick=()=>{$('agenda-login').hidden=true;$('agenda-password').value='';$('agenda-auth-error').hidden=true};
  $('agenda-login').onsubmit=async event=>{event.preventDefault();$('agenda-submit').disabled=true;$('agenda-auth-error').hidden=true;try{const firebase=await loadAgendaFirebase();let login=$('agenda-email').value.trim().toLowerCase();if(!login.includes('@'))login+='@agendamentos.com';await firebase.auth().signInWithEmailAndPassword(login,$('agenda-password').value);$('agenda-login').hidden=true}catch(error){$('agenda-auth-error').textContent='Não foi possível entrar. Confira o acesso e a conexão.';$('agenda-auth-error').hidden=false}finally{$('agenda-password').value='';$('agenda-submit').disabled=false}};
  $('agenda-signout').onclick=async()=>{try{await window.firebase.auth().signOut()}catch{$('sync-status').textContent='Não foi possível sair. Tente novamente.'}};
- window.addEventListener('pagehide',()=>{agendaSync?.stop();cancelAgentMotions()},{once:true});
+ window.addEventListener('pagehide',()=>{agendaSync?.stop();stopDirectory();cancelAgentMotions()},{once:true});
  updateAgendaPanel();
  // SDKs load asynchronously, after Google Maps was requested. No agenda error gates the map.
  void connectAgenda();
