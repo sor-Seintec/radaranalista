@@ -99,7 +99,7 @@
     const schoolNames=uniqueIndex(schools,s=>[s.name,...(s.scheduleNames||[])],normalize);
     return {
       agent(s){const raw=String(s.analystId??'').trim();if(raw)return ids.get(normalize(raw).replace(/^analyst /,''))||null;return names.get(normalize(s.analystName))||null},
-      school(s){const cie=normalizeCie(s.schoolCie);if(cie)return cies.get(cie)||null;return schoolNames.get(normalize(s.schoolName))||null}
+      school(s){const name=normalize(s.schoolName);if(name)return schoolNames.get(name)||null;const cie=normalizeCie(s.schoolCie);if(cie)return cies.get(cie)||null;return null}
     };
   }
   const orderNumber=value=>value!==''&&value!==null&&value!==undefined&&Number.isFinite(Number(value))?Number(value):Infinity;
