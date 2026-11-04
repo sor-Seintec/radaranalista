@@ -46,7 +46,7 @@
 <p id="profile-attendance"></p>
 <small>Previsão da agenda · sem GPS. Raio e distâncias usam a base de referência.</small>
 <form id="agenda-login" hidden>
-<label for="agenda-email">E-mail <input id="agenda-email" type="email" autocomplete="username" required></label>
+<label for="agenda-email">Usuário ou e-mail <input id="agenda-email" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Ex.: Angelo" required></label>
 <label for="agenda-password">Senha <input id="agenda-password" type="password" autocomplete="current-password" required></label>
 <div class="agenda-heading"><button id="agenda-submit" type="submit" class="outline-btn">Entrar</button><button id="agenda-cancel" type="button" class="outline-btn">Cancelar</button></div>
 <p id="agenda-auth-error" role="alert" hidden></p>
@@ -310,7 +310,7 @@ function setupAgenda(){
  $('agenda-date').onchange=e=>{const next=e.target.value;if(!window.RadarAgenda.validDate(next)){$('agenda-date').value=agendaDate;return}agendaDate=next;agendaSnapshot=false;attendancesByAgent=new Map();agendaAgentStates=new Map();agendaIssues=[];cancelAgentMotions();refreshAgenda();agendaSync?.setDate(next)};
  $('agenda-connect').onclick=async()=>{await connectAgenda();if(agendaConnection.state==='signed-out'){$('agenda-login').hidden=false;$('agenda-email').focus()}};
  $('agenda-cancel').onclick=()=>{$('agenda-login').hidden=true;$('agenda-password').value='';$('agenda-auth-error').hidden=true};
- $('agenda-login').onsubmit=async event=>{event.preventDefault();$('agenda-submit').disabled=true;$('agenda-auth-error').hidden=true;try{const firebase=await loadAgendaFirebase();await firebase.auth().signInWithEmailAndPassword($('agenda-email').value.trim(),$('agenda-password').value);$('agenda-login').hidden=true}catch(error){$('agenda-auth-error').textContent='Não foi possível entrar. Confira o acesso e a conexão.';$('agenda-auth-error').hidden=false}finally{$('agenda-password').value='';$('agenda-submit').disabled=false}};
+ $('agenda-login').onsubmit=async event=>{event.preventDefault();$('agenda-submit').disabled=true;$('agenda-auth-error').hidden=true;try{const firebase=await loadAgendaFirebase();let login=$('agenda-email').value.trim().toLowerCase();if(!login.includes('@'))login+='@agendamentos.com';await firebase.auth().signInWithEmailAndPassword(login,$('agenda-password').value);$('agenda-login').hidden=true}catch(error){$('agenda-auth-error').textContent='Não foi possível entrar. Confira o acesso e a conexão.';$('agenda-auth-error').hidden=false}finally{$('agenda-password').value='';$('agenda-submit').disabled=false}};
  $('agenda-signout').onclick=async()=>{try{await window.firebase.auth().signOut()}catch{$('sync-status').textContent='Não foi possível sair. Tente novamente.'}};
  window.addEventListener('pagehide',()=>{agendaSync?.stop();cancelAgentMotions()},{once:true});
  updateAgendaPanel();
