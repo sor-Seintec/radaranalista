@@ -27,6 +27,30 @@
 #agenda-panel #agenda-signout{margin-top:8px}
 #agenda-panel [hidden]{display:none!important}
 </style>
+<style id="radar-team-styles">
+.team-strip{padding-top:53px;gap:12px;align-items:stretch}
+.team-strip .person{overflow:visible;isolation:isolate;min-height:126px;padding:39px 8px 12px;border-radius:18px;border:1px solid var(--line);background:linear-gradient(155deg,var(--surface) 40%,var(--pale));box-shadow:0 5px 16px #123e2407;transition:transform .22s,border-color .22s,box-shadow .22s,background .22s}
+.team-strip .person:hover{transform:translateY(-3px);border-color:#87ab94;box-shadow:0 10px 24px #185c4914}
+.team-strip .person .photo-wrap{position:absolute;top:-24px;left:50%;transform:translateX(-50%);width:61px;height:61px;padding:4px;border:1px solid #b9ccc0;background:var(--surface);box-shadow:0 4px 12px #174f4020;transition:box-shadow .22s,border-color .22s}
+.team-strip .person b{font-family:Manrope,var(--font);font-size:12px;letter-spacing:-.2px;margin:5px 0 0}
+.team-strip .person small{font-size:9px;margin-top:4px;line-height:1.5}
+.team-strip .person .mini-count{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:auto;padding:6px 5px 0;border-top:1px solid var(--line);border-radius:0;background:transparent;width:100%;font-size:8px;color:var(--muted);line-height:1.4}
+.team-strip .mini-count svg{width:12px;height:12px;color:var(--green)}
+.team-strip .person.active{border-color:#7da56a;background:linear-gradient(145deg,var(--pale),var(--surface));box-shadow:0 0 0 2px #a9c98233,0 9px 23px #185c4917}
+.team-strip .person.active .photo-wrap{border-color:var(--green);box-shadow:0 0 0 4px #d3ef9159,0 4px 13px #174f4026}
+.team-strip .person.active:after{width:34px;height:3px;bottom:-1px;background:var(--green)}
+.team-selection{position:absolute;top:12px;right:10px;color:var(--green);opacity:0;transition:opacity .2s}
+.team-selection svg{width:12px;height:12px}.active .team-selection{opacity:1}
+.team-school{position:absolute;left:50%;bottom:calc(100% + 33px);transform:translateX(-50%);width:calc(100% + 8px);text-align:center;pointer-events:none;line-height:1.25}
+.team-school[hidden]{display:none!important}
+.team-school-caption{display:block;font-size:7px;font-weight:700;letter-spacing:1px;color:var(--muted);margin-bottom:3px}
+.team-school-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:9px;font-weight:700;color:var(--green);overflow-wrap:anywhere}
+body.dark .team-strip .person{background:linear-gradient(145deg,var(--surface),#203c31);border-color:#39564a}
+body.dark .team-strip .person.active{background:linear-gradient(145deg,#304d36,var(--surface));border-color:#a0c37b}
+body.dark .team-school-name,body.dark .team-selection,body.dark .team-strip .mini-count svg{color:#d3ef91}
+@media(max-width:1100px){.team-strip{column-gap:8px;row-gap:64px}.team-strip .person{min-height:119px}.team-school-name{font-size:8px}}
+@media(prefers-reduced-motion:reduce){.team-strip .person,.team-strip .photo-wrap,.team-selection{transition:none}}
+</style>
 </head>
 <body>
 <div class="app">
@@ -206,7 +230,22 @@ let toastTimer;function toast(message){$('toast').textContent=message;$('toast')
 function evaluatedSchools(){const sources=(state.agent?agents.filter(a=>a.id===state.agent):agents).filter(hasLocation);return schools.map(s=>{const distances=hasLocation(s)?sources.map(a=>({agent:a,km:km(a,s)})).sort((a,b)=>a.km-b.km):[];return {...s,km:null,agent:state.agent?agents.find(a=>a.id===state.agent):null,...distances[0]}})}
 function getSchools(){return evaluatedSchools().filter(s=>s.km!==null&&s.km<=state.radius)}
 function getFiltered(){const q=normalize(state.query.trim());const source=state.scope==='nearby'?visible:state.scope==='pending'?evaluatedSchools().filter(s=>!hasLocation(s)):evaluatedSchools();return source.filter(s=>normalize(s.name+' '+s.area+' '+s.address).includes(q)).sort(state.sort==='name'?(a,b)=>a.name.localeCompare(b.name,'pt-BR'):(a,b)=>(a.km??Infinity)-(b.km??Infinity)||a.name.localeCompare(b.name,'pt-BR'))}
-function renderTeam(){const team=$('team');team.replaceChildren();agents.forEach(a=>{const count=hasLocation(a)?schools.filter(s=>hasLocation(s)&&km(a,s)<=state.radius).length:null;const b=document.createElement('button');b.className='person'+(state.agent===a.id?' active':'');b.setAttribute('aria-pressed',String(state.agent===a.id));b.title=a.name+' • '+a.area;b.innerHTML='<span class="photo-wrap"><img alt="'+escape(a.name)+'" src="'+a.photo+'"></span><b>'+escape(a.short)+'</b><small>'+escape(a.area)+'</small><span class="mini-count">'+(count===null?'Ponto pendente':count+' escolas')+'</span>';b.onclick=()=>selectAgent(a.id);team.append(b)});$('all').classList.toggle('active',!state.agent);$('all').setAttribute('aria-pressed',String(!state.agent))}
+function renderTeam(){
+ const team=$('team');team.replaceChildren();
+ agents.forEach(a=>{
+  const active=state.agent===a.id,att=attendancesByAgent.get(a.id),plan=agendaAgentStates.get(a.id);
+  const count=hasLocation(a)?schools.filter(s=>hasLocation(s)&&km(a,s)<=state.radius).length:null;
+  const live=['live','cached'].includes(agendaConnection.state);
+  const school=att?att.school.name:!live||!agendaSnapshot?'Agenda não confirmada':plan?.status==='unmatched'?'Escola não identificada':plan?.status==='completed'?'Agenda concluída':'Sem atendimento previsto';
+  const b=document.createElement('button');b.className='person'+(active?' active':'');b.dataset.agent=a.id;b.setAttribute('aria-pressed',String(active));
+  b.title=a.name+' · '+a.area+(active?' · '+school:'');
+  b.setAttribute('aria-label',a.name+' · '+a.area+(active?' · '+school:''));
+  b.innerHTML='<span class="team-school" '+(active?'':'hidden')+'><span class="team-school-caption">'+(att?'ESCOLA PREVISTA':'AGENDA DO DIA')+'</span><span class="team-school-name">'+escape(school)+'</span></span><span class="team-selection" aria-hidden="true">'+icon('pin')+'</span><span class="photo-wrap"><img alt="'+escape(a.name)+'" src="'+a.photo+'"></span><b>'+escape(a.short)+'</b><small>'+escape(a.area)+'</small><span class="mini-count">'+icon('school')+'<span>'+(count===null?'Ponto pendente':count+' escolas no raio')+'</span></span>';
+  b.onclick=()=>selectAgent(a.id);team.append(b);
+ });
+ $('all').classList.toggle('active',!state.agent);$('all').setAttribute('aria-pressed',String(!state.agent));
+}
+
 function renderProfile(){const a=agents.find(a=>a.id===state.agent);$('profile-photo').src=a?a.photo:agents[1].photo;$('profile-photo').alt=a?a.name:'Equipe Sorocaba';$('profile-name').textContent=a?a.name:'Equipe Sorocaba';$('profile-area').textContent=a?a.area:'8 analistas • visão integrada';$('profile-address').textContent=a?a.address+' • '+(hasLocation(a)?'posição aproximada na rua':a.geocodingNote||'Localização pendente'):'Escolas próximas a pelo menos um analista com ponto localizado';$('map-title').textContent=a?a.short+' • '+a.area:'Visão integrada da equipe';$('map-subtitle').textContent=a&&!hasLocation(a)?'Localização pendente • consulte a lista Todas':'Raio de '+state.radius+' km • posições aproximadas';$('radius-value').textContent=state.radius+' km';$('coverage').textContent=Math.round(visible.length/schools.length*100)+'%';$('coverage-text').textContent=visible.length+' de '+schools.length+' escolas no alcance';$('base-count').textContent=schools.length+' escolas na base';$('base-summary').textContent=schools.filter(hasLocation).length+' com ponto • '+schools.filter(s=>!hasLocation(s)).length+' pendentes';$('scope-pending').textContent='Pendentes ('+schools.filter(s=>!hasLocation(s)).length+')'}
 function renderList(){const list=$('school-list');list.replaceChildren();const filtered=getFiltered();$('school-count').textContent=filtered.length;$('list-title').textContent=state.scope==='nearby'?'Escolas no alcance':state.scope==='pending'?'Localizações pendentes':'Todas as escolas';['nearby','all','pending'].forEach(v=>$('scope-'+v).setAttribute('aria-pressed',String(state.scope===v)));$('results-caption').textContent=state.query?'Resultado da busca':state.sort==='name'?'Em ordem alfabética':'Da mais próxima à mais distante';$('sort-label').textContent=state.sort==='name'?'Nome':'Distância';if(!filtered.length){const p=document.createElement('p');p.className='empty';p.textContent=state.query?'Nenhuma escola encontrada. Tente outro nome, rua ou bairro.':state.scope==='pending'?'Todas as escolas estão localizadas.':state.agent&&!hasLocation(agents.find(a=>a.id===state.agent))?'O ponto deste analista precisa de confirmação. Consulte Todas para ver os endereços das escolas.':'Nenhuma escola neste raio. Amplie a cobertura ou consulte Todas.';list.append(p);return}filtered.forEach((s,i)=>{const b=document.createElement('button');b.className='school-row'+(state.school===s.id?' selected':'');b.style.setProperty('--delay',Math.min(i,10)*15+'ms');b.dataset.school=s.id;b.innerHTML='<span class="school-icon">'+icon('school')+'</span><span class="school-copy"><span class="school-name">'+escape(s.name)+'</span><span class="school-area">'+escape(s.area)+(!state.agent&&s.agent?' • '+escape(s.agent.short):'')+'</span><span class="school-address">'+escape(s.address)+'</span></span><span class="distance">'+(s.km===null?'—':'≈ '+format(s.km))+'<small>'+(hasLocation(s)?'km':'pendente')+'</small></span>';b.onclick=()=>selectSchool(s.id);list.append(b)})}
 function agentContent(a){return '<div class="agent-map'+(state.agent===a.id?' active':'')+'"><img src="'+a.photo+'" alt="'+escape(a.name)+'"><span>'+escape(a.short)+'</span></div>'}
@@ -263,6 +302,7 @@ function syncDirectory(){
 }
 function cancelAgentMotions(){agentMotionFrames.forEach(id=>cancelAnimationFrame(id));agentMotionFrames.clear()}
 function updateAgendaPanel(){
+ renderTeam();
  const status=agendaConnection.state;
  const messages={stopped:'Agenda desconectada',authenticating:'Verificando acesso à agenda…',connecting:'Consultando agenda da data…','signed-out':'Conectar agenda','permission-denied':'Sem permissão para ler a agenda',error:'Agenda indisponível. Tente reconectar.'};
  $('sync-status').textContent=['live','cached'].includes(status)?(status==='cached'?'Dados em cache':'Agenda sincronizada')+' · '+attendancesByAgent.size+' previsto(s)'+(agendaIssues.length?' · '+agendaIssues.length+' vínculo(s) pendente(s)':''):messages[status]||'Agenda desconectada';
